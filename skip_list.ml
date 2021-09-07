@@ -3,13 +3,14 @@
 (* This is based on a probability of 1/2 and a maximum of 2^32 elements. *)
 let max_levels = 32
 
-type ('k, 'v) sl_node = {
+type ('k, 'v) node = {
   key : 'k;
   mutable value : 'v;
-  forward : ('k, 'v) sl_node ref array;
+  forward : ('k, 'v) node ref array;
 }
 
-type ('k, 'v) skip_list = ('k, 'v) sl_node ref array ref
+(* The header is extended when needed to avoid null pointers. *)
+type ('k, 'v) skip_list = ('k, 'v) node ref array ref
 
 (* Make an empty list. *)
 let make_empty (u : unit) = ref [| |]
@@ -50,10 +51,10 @@ let rec random_level (level : int) =
 let insert key value sl trace =
   let level = random_level 0 in
   let levels = Array.length !sl in
-  let trace_part = Array.sub trace 0 (min (level + 1) levels) in
-  let forward = Array.mapi (fun i forward -> forward.(i)) trace_part in
+  let subtrace = Array.sub trace 0 (min (level + 1) levels) in
+  let forward = Array.mapi (fun i forward -> forward.(i)) subtrace in
   let node = ref { key = key; value = value; forward = forward } in
-  Array.iteri (fun i forward -> forward.(i) <- node) trace_part;
+  Array.iteri (fun i forward -> forward.(i) <- node) subtrace;
   if levels <= level then begin
     let new_levels = Array.make (level - levels + 1) node in
     sl := Array.append !sl new_levels
