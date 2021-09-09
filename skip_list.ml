@@ -35,34 +35,43 @@ let entries sl = get_entries !sl.(0)
 let rec seek k forward level =
   match forward.(level) with
   | None ->
-    if level > 0 then seek k forward (level - 1)
-    else None
+    if level > 0
+      then seek k forward (level - 1)
+      else None
   | Some node ->
-    if !node.key < k then seek k !node.forward level
-    else if level > 0 then seek k forward (level - 1)
-    else forward.(0)
+    if !node.key < k
+      then seek k !node.forward level
+      else if level > 0
+        then seek k forward (level - 1)
+        else forward.(0)
 
 (* Same as seek, but stores visited forward arrays in a trace. *)
 let rec seek_trace k forward level trace =
   match forward.(level) with
   | None ->
     trace.(level) <- forward;
-    if level > 0 then seek_trace k forward (level - 1) trace
-    else None
+    if level > 0
+      then seek_trace k forward (level - 1) trace
+      else None
   | Some node ->
-    if !node.key < k then seek_trace k !node.forward level trace
-    else begin
-      trace.(level) <- forward;
-      if level > 0 then seek_trace k forward (level - 1) trace
-      else forward.(0)
-    end
+    if !node.key < k
+      then seek_trace k !node.forward level trace
+      else begin
+        trace.(level) <- forward;
+        if level > 0
+          then seek_trace k forward (level - 1) trace
+          else forward.(0)
+      end
 
 (* Lookup a key. *)
 let get key sl =
   let levels = Array.length !sl in
   match seek key !sl (levels - 1) with
   | None -> None
-  | Some node -> if !node.key = key then Some !node.value else None
+  | Some node ->
+    if !node.key = key
+      then Some !node.value
+      else None
 
 (* Determine a random level. *)
 let rec random_level level =
@@ -90,8 +99,9 @@ let set key value sl =
   match seek_trace key !sl (levels - 1) trace with
   | None -> insert key value sl trace
   | Some node ->
-    if !node.key = key then !node.value <- value
-    else insert key value sl trace
+    if !node.key = key
+      then !node.value <- value
+      else insert key value sl trace
 
 (* Delete a node using its seek trace. *)
 let delete node trace =
@@ -147,7 +157,9 @@ let rec valid_node prev_key node_opt =
     Array.for_all (fun b -> b) (Array.mapi (fun i opt ->
       match opt with
       | None -> true
-      | Some next -> !node.key < !next.key && i < Array.length !next.forward
+      | Some next ->
+        !node.key < !next.key &&
+        i < Array.length !next.forward
       ) !node.forward)
 
 (* Validate a skip list. *)
