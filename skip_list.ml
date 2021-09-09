@@ -75,8 +75,9 @@ let insert key value sl trace =
   let subtrace = Array.sub trace 0 (min (level + 1) levels) in
   let node_forward = Array.make (level + 1) None in
   let node = ref { key = key; value = value; forward = node_forward } in
-  Array.iteri (fun i forward -> node_forward.(i) <- forward.(i)) subtrace;
-  Array.iteri (fun i forward -> forward.(i) <- Some node) subtrace;
+  Array.iteri (fun i forward ->
+    node_forward.(i) <- forward.(i);
+    forward.(i) <- Some node) subtrace;
   if levels <= level then begin
     let new_levels = Array.make (level - levels + 1) (Some node) in
     sl := Array.append !sl new_levels
