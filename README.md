@@ -2,7 +2,7 @@ A functional skip list in ML
 ============================
 This is an implementation of a skip list key/value store in OCaml. The program
 is defined in a functional way to prepare it for verification using the Iris
-separation logic framework. It does not rely on null pointers.
+separation logic framework.
 
 Skip lists resemble binary trees except that they do not require global
 rebalancing. Instead they rely on probabilistic heuristics to keep the time
