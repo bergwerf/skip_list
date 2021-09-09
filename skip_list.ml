@@ -9,41 +9,18 @@ type ('k, 'v) node = {
 (* The header is reallocated when more levels are needed. *)
 type ('k, 'v) skip_list = ('k, 'v) node ref option array ref
 
-(* Make an empty list. *)
+(***
+Map operations
+--------------
+I believe no locking is needed at all to keep the skip list intact during each
+operation. To achieve this the order of operations must be taken into account,
+such that each element of the skip list remains reachable in each intermediary
+state. It becomes more tricky when concurrent processes insert new nodes next to
+each other.
+*)
+
+(* Make an empty skip list. *)
 let make_empty (u : unit) = ref [| None |]
-
-(* Ordering of forward pointers (else seeking gets stuck). *)
-let node_ref_opt_leq x y =
-  match x, y with
-  | _, None -> true
-  | Some u, Some v -> !u.key <= !v.key
-  | _, _ -> false
-
-(* Check if a list is leq-sorted. *)
-let rec is_sorted leq l =
-  match l with
-  | [] -> true
-  | [_] -> true
-  | x :: y :: tl -> leq x y && is_sorted leq (y :: tl)
-
-(* Validate a `node ref option`. *)
-let rec valid_node prev_key node_opt =
-  match node_opt with
-  | None -> true
-  | Some node ->
-    let key = Some !node.key in
-    prev_key < key && valid_node key !node.forward.(0) &&
-    is_sorted node_ref_opt_leq (Array.to_list !node.forward) &&
-    Array.for_all (fun b -> b) (Array.mapi (fun i opt ->
-      match opt with
-      | None -> true
-      | Some next -> !node.key < !next.key && i < Array.length !next.forward
-      ) !node.forward)
-
-(* Validate a skip list. *)
-let valid sl =
-  is_sorted node_ref_opt_leq (Array.to_list !sl) &&
-  valid_node None !sl.(0)
 
 (* Get all key/value pairs starting at a `node ref option`. *)
 let rec get_entries node_opt =
@@ -98,9 +75,8 @@ let insert key value sl trace =
   let subtrace = Array.sub trace 0 (min (level + 1) levels) in
   let node_forward = Array.make (level + 1) None in
   let node = ref { key = key; value = value; forward = node_forward } in
-  Array.iteri (fun i forward ->
-    node_forward.(i) <- forward.(i);
-    forward.(i) <- Some node) subtrace;
+  Array.iteri (fun i forward -> node_forward.(i) <- forward.(i)) subtrace;
+  Array.iteri (fun i forward -> forward.(i) <- Some node) subtrace;
   if levels <= level then begin
     let new_levels = Array.make (level - levels + 1) (Some node) in
     sl := Array.append !sl new_levels
@@ -131,3 +107,49 @@ let unset key sl =
   match seek_trace key !sl (levels - 1) trace with
   | None -> ()
   | Some node -> if !node.key = key then delete node trace
+
+(***
+Structural validation
+---------------------
+The algorithms described here maintain an order between pointers of different
+levels in each forward array. Lower level pointers never point further than
+higher level pointers. But this condition is not strictly required for a
+functioning skip list. It is possible to fragment the skip list, for example by
+removing level zero skips, making some nodes unreachable. A strong validity
+requirement could state that every forward pointer is reachable by a seek
+operation, and is in fact needed for seeking after zero or more nodes are
+removed. This ensures the algorithm never stores useless pointers.
+*)
+
+(* Ordering of forward pointers (else seeking gets stuck). *)
+let node_ref_opt_leq x y =
+  match x, y with
+  | _, None -> true
+  | Some u, Some v -> !u.key <= !v.key
+  | _, _ -> false
+
+(* Check if a list is leq-sorted. *)
+let rec is_sorted leq l =
+  match l with
+  | [] -> true
+  | [_] -> true
+  | x :: y :: tl -> leq x y && is_sorted leq (y :: tl)
+
+(* Validate a `node ref option`. *)
+let rec valid_node prev_key node_opt =
+  match node_opt with
+  | None -> true
+  | Some node ->
+    let key = Some !node.key in
+    prev_key < key && valid_node key !node.forward.(0) &&
+    is_sorted node_ref_opt_leq (Array.to_list !node.forward) &&
+    Array.for_all (fun b -> b) (Array.mapi (fun i opt ->
+      match opt with
+      | None -> true
+      | Some next -> !node.key < !next.key && i < Array.length !next.forward
+      ) !node.forward)
+
+(* Validate a skip list. *)
+let valid sl =
+  is_sorted node_ref_opt_leq (Array.to_list !sl) &&
+  valid_node None !sl.(0)
