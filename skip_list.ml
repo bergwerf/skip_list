@@ -1,5 +1,7 @@
 (* The skip_list based on "A Skip List Cookbook". *)
 
+let iterate l f = Array.iteri f l
+
 type ('k, 'v) node = {
   key : 'k;
   mutable value : 'v;
@@ -86,9 +88,9 @@ let insert key value sl trace =
   let node = ref { key = key; value = value; forward = node_forward } in
   (* Re-route forward references. *)
   let subtrace = Array.sub trace 0 (min (level + 1) levels) in
-  Array.iteri (fun i forward ->
+  iterate subtrace (fun i forward ->
     node_forward.(i) <- forward.(i);
-    forward.(i) <- Some node) subtrace;
+    forward.(i) <- Some node);
   (* Re-allocate header if needed. *)
   if levels <= level then begin
     let new_levels = Array.make (level + 1 - levels) (Some node) in
@@ -106,21 +108,20 @@ let set key value sl =
       then !node.value <- value
       else insert key value sl trace
 
-(* Delete a node using its seek trace. *)
-let delete node trace =
-  Array.iteri (fun i forward ->
-    begin match forward.(i) with
-    | None -> ()
-    | Some n -> if n == node then forward.(i) <- !node.forward.(i)
-    end) trace
-
-(* Remove a key. *)
-let unset key sl =
+(* Delete a key. *)
+let delete key sl =
   let levels = Array.length sl.header in
   let trace = Array.make levels [| |] in
   match seek_trace key sl.header (levels - 1) trace with
   | None -> ()
-  | Some node -> if !node.key = key then delete node trace
+  | Some node ->
+    if !node.key = key
+      then iterate trace (fun i forward ->
+        match forward.(i) with
+        | None -> ()
+        | Some next ->
+          if next == node
+            then forward.(i) <- !node.forward.(i))
 
 (***
 Structural validation

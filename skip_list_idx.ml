@@ -1,5 +1,7 @@
 (* The indexed skip list using skip sizes. *)
 
+let iterate l f = Array.iteri f l
+
 type 'v node = {
   mutable value : 'v;
   forward : (int * 'v node ref option) array;
@@ -14,8 +16,8 @@ let rec random_level level =
   if Random.bool () then random_level (level + 1) else level
 
 (***
-Linear list operations
-----------------------
+List operations
+---------------
 *)
 
 let terminal_skip = (1, None)
@@ -86,14 +88,14 @@ let insert i value sl =
   let node_forward = Array.make (level + 1) terminal_skip in
   let node = ref { value = value; forward = node_forward } in
   (* Re-route forward references and update skip sizes. *)
-  Array.iteri (fun i (offset, forward) ->
+  iterate trace (fun i (offset, forward) ->
     let (size, next) = forward.(i) in
     if i > level
       then forward.(i) <- (size + 1, next)
       else begin
         node_forward.(i) <- (size + 1 - offset, next);
         forward.(i) <- (offset, Some node)
-      end) trace;
+      end);
   (* Re-allocate header if needed. *)
   if levels <= level then begin
     let new_levels = Array.make (level + 1 - levels) (i + 1, Some node) in
@@ -101,12 +103,24 @@ let insert i value sl =
   end;
   sl.length <- sl.length + 1
 
-(* Remove a value at some index. *)
-let remove i sl =
+(* Delete a value at some index. *)
+let delete i sl =
   let levels = Array.length sl.header in
   let trace = Array.make levels (0, [| |]) in
-  seek_trace (i + 1) sl.header (levels - 1) trace
-  (* Remove the next node and update all sizes in the trace. *)
+  match seek_trace (i + 1) sl.header (levels - 1) trace with
+  | (_, None) -> raise (Invalid_argument "index out of bounds") 
+  | (_, Some node) ->
+    sl.length <- sl.length - 1;
+    iterate trace (fun i (offset, forward) ->
+      match forward.(i) with
+      | (size, None) -> forward.(i) <- (size - 1, None)
+      | (size, Some next) ->
+        if not (next == node)
+          then forward.(i) <- (size - 1, Some next)
+          else begin
+            let (size2, next2) = !node.forward.(i) in
+            forward.(i) <- (size - 1 + size2, next2)
+          end)
 
 (* Insert a value at the end of the list. *)
 let append value sl = insert sl.length value sl
@@ -115,3 +129,27 @@ let append value sl = insert sl.length value sl
 Structural validation
 ---------------------
 *)
+
+let rec assoc key l =
+  match l with
+  | [] -> None
+  | (k, v) :: tl -> if k == key then Some v else assoc key tl
+
+let rec node_to_index i (size, node_opt) =
+  match node_opt with
+  | None -> []
+  | Some node -> (node, i) :: node_to_index (i + 1) !node.forward.(0)
+
+let rec valid_skips forward i index =
+  Array.for_all (fun (size, node_opt) ->
+    match node_opt with
+    | None -> true
+    | Some node ->
+      match assoc node index with
+      | None -> false
+      | Some j -> i + size = j
+    ) forward
+
+let valid sl =
+  let index = node_to_index 1 sl.header.(0) in
+  List.for_all (fun (node, i) -> valid_skips !node.forward i index) index
