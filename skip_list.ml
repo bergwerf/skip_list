@@ -6,8 +6,9 @@ type ('k, 'v) node = {
   forward : ('k, 'v) node ref option array;
 }
 
-(* The header is reallocated when more levels are needed. *)
-type ('k, 'v) skip_list = ('k, 'v) node ref option array ref
+type ('k, 'v) skip_list = {
+  mutable header : ('k, 'v) node ref option array
+}
 
 (* Determine a random level. *)
 let rec random_level level =
@@ -24,7 +25,7 @@ each other.
 *)
 
 (* Make an empty skip list. *)
-let make_empty (u : unit) = ref [| None |]
+let make_empty (u : unit) = { header = [| None |] }
 
 (* Get all key/value pairs starting at a `node ref option`. *)
 let rec get_entries node_opt =
@@ -33,7 +34,7 @@ let rec get_entries node_opt =
   | Some node -> (!node.key, !node.value) :: get_entries !node.forward.(0)
 
 (* Get all key/value pairs. *)
-let entries sl = get_entries !sl.(0)
+let entries sl = get_entries sl.header.(0)
 
 (* Seek the node with key k, starting at the given skip level. *)
 let rec seek k forward level =
@@ -69,8 +70,8 @@ let rec seek_trace k forward level trace =
 
 (* Lookup a key. *)
 let get key sl =
-  let levels = Array.length !sl in
-  match seek key !sl (levels - 1) with
+  let levels = Array.length sl.header in
+  match seek key sl.header (levels - 1) with
   | None -> None
   | Some node ->
     if !node.key = key
@@ -80,7 +81,7 @@ let get key sl =
 (* Insert a key/value pair using its seek trace. *)
 let insert key value sl trace =
   let level = random_level 0 in
-  let levels = Array.length !sl in
+  let levels = Array.length sl.header in
   let node_forward = Array.make (level + 1) None in
   let node = ref { key = key; value = value; forward = node_forward } in
   (* Re-route forward references. *)
@@ -91,14 +92,14 @@ let insert key value sl trace =
   (* Re-allocate header if needed. *)
   if levels <= level then begin
     let new_levels = Array.make (level + 1 - levels) (Some node) in
-    sl := Array.append !sl new_levels
+    sl.header <- Array.append sl.header new_levels
   end
 
 (* Update or insert a key/value pair. *)
 let set key value sl =
-  let levels = Array.length !sl in
+  let levels = Array.length sl.header in
   let trace = Array.make levels [| |] in
-  match seek_trace key !sl (levels - 1) trace with
+  match seek_trace key sl.header (levels - 1) trace with
   | None -> insert key value sl trace
   | Some node ->
     if !node.key = key
@@ -115,9 +116,9 @@ let delete node trace =
 
 (* Remove a key. *)
 let unset key sl =
-  let levels = Array.length !sl in
+  let levels = Array.length sl.header in
   let trace = Array.make levels [| |] in
-  match seek_trace key !sl (levels - 1) trace with
+  match seek_trace key sl.header (levels - 1) trace with
   | None -> ()
   | Some node -> if !node.key = key then delete node trace
 
@@ -166,5 +167,5 @@ let rec valid_node prev_key node_opt =
 
 (* Validate a skip list. *)
 let valid sl =
-  is_sorted node_ref_opt_leq (Array.to_list !sl) &&
-  valid_node None !sl.(0)
+  is_sorted node_ref_opt_leq (Array.to_list sl.header) &&
+  valid_node None sl.header.(0)
