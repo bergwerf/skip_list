@@ -9,6 +9,10 @@ type ('k, 'v) node = {
 (* The header is reallocated when more levels are needed. *)
 type ('k, 'v) skip_list = ('k, 'v) node ref option array ref
 
+(* Determine a random level. *)
+let rec random_level level =
+  if Random.bool () then random_level (level + 1) else level
+
 (***
 Map operations
 --------------
@@ -73,22 +77,20 @@ let get key sl =
       then Some !node.value
       else None
 
-(* Determine a random level. *)
-let rec random_level level =
-  if Random.bool () then random_level (level + 1) else level
-
 (* Insert a key/value pair using its seek trace. *)
 let insert key value sl trace =
   let level = random_level 0 in
   let levels = Array.length !sl in
-  let subtrace = Array.sub trace 0 (min (level + 1) levels) in
   let node_forward = Array.make (level + 1) None in
   let node = ref { key = key; value = value; forward = node_forward } in
+  (* Re-route forward references. *)
+  let subtrace = Array.sub trace 0 (min (level + 1) levels) in
   Array.iteri (fun i forward ->
     node_forward.(i) <- forward.(i);
     forward.(i) <- Some node) subtrace;
+  (* Re-allocate header if needed. *)
   if levels <= level then begin
-    let new_levels = Array.make (level - levels + 1) (Some node) in
+    let new_levels = Array.make (level + 1 - levels) (Some node) in
     sl := Array.append !sl new_levels
   end
 
